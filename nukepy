@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+"""
+Wrapper for Nuke -t that behaves more like a normal python binary.
+
+ - adds support for -c flag to pass a string of python code to execute
+ - expands symbolic links
+ - can be used as the interpreter in executable python scripts (e.g. #!/usr/bin/env nukepy)
+"""
+
+from __future__ import with_statement
+
+import sys
+import os
+import subprocess
+import tempfile
+
+newArgsList = []
+nextIsPyCmd = False
+tempFileName = None
+try:
+    for arg in sys.argv[1:]:
+        if nextIsPyCmd:
+            nextIsPyCmd = False
+            fd, tempFileName = tempfile.mkstemp(suffix='.py',
+                                                prefix='nukepyCommand',
+                                                text=True)
+            with os.fdopen(fd, 'w') as tempFileHandle:
+                tempFileHandle.write(arg)
+            newArgsList.append(tempFileName)
+        elif arg == '-c':
+            if tempFileName is not None:
+                raise Exception('-c argument may only be given once')
+            nextIsPyCmd = True
+        elif os.path.islink(arg):
+            newArgsList.append(os.path.realpath(arg))
+        else:
+            newArgsList.append(arg)
+
+    procArgs = ["Nuke", "-c", "4G", "-t", "--"] + newArgsList
+    p = subprocess.Popen(procArgs)
+    os.waitpid(p.pid, 0)[1]
+finally:
+    if tempFileName:
+        os.remove(tempFileName)
+
+# this also works but exits in a slightly different way
+#/bin/tcsh
+#Nuke -t < $*
